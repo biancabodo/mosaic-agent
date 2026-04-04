@@ -273,10 +273,11 @@ async def ingest_ticker(
                 f"No {form_types} filings found for ticker '{ticker}' (CIK: {cik})"
             )
 
+        import asyncio
+
+        texts = await asyncio.gather(*[fetch_filing_text(m, client) for m in filings])
         all_chunks: list[dict[str, Any]] = []
-        for filing_meta in filings:
-            text = await fetch_filing_text(filing_meta, client)
-            chunks = chunk_filing(text, ticker, filing_meta)
-            all_chunks.extend(chunks)
+        for filing_meta, text in zip(filings, texts, strict=False):
+            all_chunks.extend(chunk_filing(text, ticker, filing_meta))
 
         return all_chunks

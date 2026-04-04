@@ -8,7 +8,7 @@ from langchain_core.messages import HumanMessage
 from config.settings import Settings
 from graph.state import AgentState
 from rag.ingest import ingest_ticker
-from rag.retriever import get_or_build_store, retrieve
+from rag.retriever import build_store, load_store, retrieve
 
 _RESEARCH_PROMPT = """\
 You are a senior equity research analyst specialising in SEC filings.
@@ -60,7 +60,6 @@ async def research_node(state: AgentState) -> dict[str, Any]:
     ticker = state["ticker"]
     iteration = state.get("iteration_count", 0)
 
-    # On retries, broaden the query to seek different evidence
     if iteration == 0:
         query = _DEFAULT_QUERY
     else:
@@ -71,8 +70,13 @@ async def research_node(state: AgentState) -> dict[str, Any]:
         )
 
     try:
-        chunks = await ingest_ticker(ticker, form_types=["10-K", "10-Q"], max_filings=2)
-        store = get_or_build_store(chunks, ticker)
+        try:
+            store = load_store(ticker)
+        except FileNotFoundError:
+            chunks = await ingest_ticker(
+                ticker, form_types=["10-K", "10-Q"], max_filings=2
+            )
+            store = build_store(chunks, ticker)
         docs = retrieve(query, store)
     except (ValueError, OSError) as exc:
         return {

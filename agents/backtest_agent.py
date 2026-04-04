@@ -70,7 +70,6 @@ def _run_backtest(
     years = n_days / 252.0
     cagr: float = float((1.0 + total_ret) ** (1.0 / years) - 1.0) if years > 0 else 0.0
 
-    # from_holding is a single entry + single exit = 1 trade
     num_trades: int = 1
 
     return sharpe, max_dd, cagr, total_ret, num_trades
@@ -157,7 +156,6 @@ async def backtest_node(state: AgentState) -> dict[str, Any]:
     sharpe, max_dd, cagr, total_ret, num_trades = _run_backtest(prices, direction)
     bench_sharpe, bench_cagr = _benchmark_metrics(prices)
 
-    # Clamp max_drawdown to ensure it satisfies the schema's le=0.0 constraint
     max_dd = min(max_dd, 0.0)
 
     result = BacktestResult(

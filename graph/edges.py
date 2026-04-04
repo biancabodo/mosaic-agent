@@ -1,5 +1,6 @@
 """Conditional routing logic for the AlphaSignal LangGraph StateGraph."""
 
+from config.settings import Settings
 from graph.state import AgentState
 
 
@@ -21,8 +22,6 @@ def route_after_signal(state: AgentState) -> str:
     Returns:
         String key matching a node name or '__end__' for LangGraph termination.
     """
-    from config.settings import Settings
-
     settings = Settings()
 
     signals = state.get("signals", [])

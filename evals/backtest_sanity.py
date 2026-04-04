@@ -1,6 +1,6 @@
 """Rule-based sanity checks for BacktestResult — no lookahead bias, valid ranges."""
 
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 from langsmith import traceable
@@ -70,8 +70,6 @@ def evaluate_no_lookahead(
     # Check against signal generation time if available
     signal_data = outputs.get("signal", {})
     if isinstance(signal_data, dict) and "generated_at" in signal_data:
-        from datetime import datetime
-
         generated_at_str = signal_data["generated_at"]
         try:
             generated_at = datetime.fromisoformat(str(generated_at_str)).date()

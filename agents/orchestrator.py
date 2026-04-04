@@ -33,7 +33,6 @@ async def run_pipeline(ticker: str) -> AgentState:
         "research_context": "",
         "signals": [],
         "backtest_result": None,
-        "next_agent": "research",
         "iteration_count": 0,
         "error": None,
     }

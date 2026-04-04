@@ -37,7 +37,6 @@ def base_state() -> AgentState:
         "research_context": "Some research context here.",
         "signals": [],
         "backtest_result": None,
-        "next_agent": "signal",
         "iteration_count": 1,
         "error": None,
     }

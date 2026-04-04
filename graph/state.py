@@ -1,6 +1,6 @@
 """AgentState TypedDict — shared state passed between all nodes in the LangGraph."""
 
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any
 
 from langgraph.graph.message import add_messages
 from typing_extensions import TypedDict
@@ -18,7 +18,6 @@ class AgentState(TypedDict):
       2. signal_agent populates signals
       3. backtest_agent populates backtest_result
 
-    The next_agent field drives conditional routing via edges.py.
     iteration_count tracks research→signal loops to prevent infinite retries.
     """
 
@@ -36,9 +35,6 @@ class AgentState(TypedDict):
 
     backtest_result: BacktestResult | None
     """BacktestResult populated by the backtest agent, or None if not yet run."""
-
-    next_agent: Literal["research", "signal", "backtest", "END"]
-    """Routing target set by each node; consumed by conditional_edge in edges.py."""
 
     iteration_count: int
     """Number of times the research→signal loop has run. Caps at 3 to prevent loops."""
