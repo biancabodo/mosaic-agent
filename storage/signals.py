@@ -85,9 +85,7 @@ def save(
             },
         )
         row_id: int = cursor.lastrowid or 0
-        log.info(
-            "[%s] signal saved to %s (id=%d)", signal.ticker, db_path, row_id
-        )
+        log.info("[%s] signal saved to %s (id=%d)", signal.ticker, db_path, row_id)
         return row_id
 
 
