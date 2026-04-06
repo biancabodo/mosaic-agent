@@ -1,5 +1,6 @@
 """Signal agent — extracts a structured AlphaSignal from research context."""
 
+import logging
 from typing import Any
 
 from langchain_anthropic import ChatAnthropic
@@ -8,6 +9,8 @@ from langchain_core.messages import HumanMessage
 from config.settings import Settings
 from graph.state import AgentState
 from schemas.signal import AlphaSignal
+
+log = logging.getLogger(__name__)
 
 _SIGNAL_PROMPT = """\
 You are a quantitative analyst extracting a structured investment signal.
@@ -53,6 +56,7 @@ async def signal_node(state: AgentState) -> dict[str, Any]:
     ticker = state["ticker"]
     research_context = state.get("research_context", "")
 
+    log.info("[%s] signal_node — extracting structured signal via LLM", ticker)
     llm = ChatAnthropic(
         model=settings.anthropic_model,
         temperature=0.0,
@@ -66,6 +70,12 @@ async def signal_node(state: AgentState) -> dict[str, Any]:
 
     signal: AlphaSignal = await llm.ainvoke(  # type: ignore[assignment]
         [HumanMessage(content=prompt)]
+    )
+    log.info(
+        "[%s] signal_node complete — %s confidence=%.2f",
+        ticker,
+        signal.direction.upper(),
+        signal.confidence,
     )
 
     existing_signals: list[AlphaSignal] = list(state.get("signals", []))

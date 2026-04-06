@@ -1,5 +1,6 @@
 """SEC EDGAR filing ingestion — async download, HTML stripping, SEC-aware chunking."""
 
+import logging
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -9,6 +10,8 @@ from bs4 import BeautifulSoup, Tag
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from config.settings import Settings
+
+log = logging.getLogger(__name__)
 
 EDGAR_BASE_URL = "https://data.sec.gov"
 EDGAR_ARCHIVES_URL = "https://www.sec.gov/Archives/edgar"
@@ -265,7 +268,9 @@ async def ingest_ticker(
     headers = {"User-Agent": settings.sec_user_agent}
 
     async with httpx.AsyncClient(headers=headers, timeout=30.0) as client:
+        log.info("[%s] resolving CIK from SEC EDGAR", ticker)
         cik = await fetch_cik(ticker, client)
+        log.info("[%s] CIK=%s — fetching filing metadata", ticker, cik)
         filings = await fetch_filing_metadata(cik, form_types, client, max_filings)
 
         if not filings:
@@ -273,11 +278,26 @@ async def ingest_ticker(
                 f"No {form_types} filings found for ticker '{ticker}' (CIK: {cik})"
             )
 
+        log.info(
+            "[%s] downloading %d filing(s) in parallel: %s",
+            ticker,
+            len(filings),
+            [f"{m.form_type} {m.filing_date}" for m in filings],
+        )
         import asyncio
 
         texts = await asyncio.gather(*[fetch_filing_text(m, client) for m in filings])
         all_chunks: list[dict[str, Any]] = []
         for filing_meta, text in zip(filings, texts, strict=False):
-            all_chunks.extend(chunk_filing(text, ticker, filing_meta))
+            chunks = chunk_filing(text, ticker, filing_meta)
+            log.info(
+                "[%s] %s %s → %d chunks",
+                ticker,
+                filing_meta.form_type,
+                filing_meta.filing_date,
+                len(chunks),
+            )
+            all_chunks.extend(chunks)
 
+        log.info("[%s] ingestion complete — %d total chunks", ticker, len(all_chunks))
         return all_chunks

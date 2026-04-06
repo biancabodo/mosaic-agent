@@ -1,9 +1,19 @@
 """CLI entry point — run the AlphaSignal research pipeline for a given ticker."""
 
 import asyncio
+import logging
 import sys
 
 from agents.orchestrator import extract_result, run_pipeline
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s  %(levelname)-8s  %(name)s — %(message)s",
+    datefmt="%H:%M:%S",
+)
+# Silence noisy third-party loggers
+for _noisy in ("httpx", "httpcore", "huggingface_hub", "sentence_transformers", "faiss"):
+    logging.getLogger(_noisy).setLevel(logging.WARNING)
 
 
 async def main(ticker: str) -> None:

@@ -1,5 +1,6 @@
 """Research agent — RAG-powered SEC filing researcher node for the LangGraph."""
 
+import logging
 from typing import Any
 
 from langchain_anthropic import ChatAnthropic
@@ -9,6 +10,8 @@ from config.settings import Settings
 from graph.state import AgentState
 from rag.ingest import ingest_ticker
 from rag.retriever import build_store, load_store, retrieve
+
+log = logging.getLogger(__name__)
 
 _RESEARCH_PROMPT = """\
 You are a senior equity research analyst specialising in SEC filings.
@@ -60,6 +63,8 @@ async def research_node(state: AgentState) -> dict[str, Any]:
     ticker = state["ticker"]
     iteration = state.get("iteration_count", 0)
 
+    log.info("[%s] research_node start (iteration %d)", ticker, iteration)
+
     if iteration == 0:
         query = _DEFAULT_QUERY
     else:
@@ -73,10 +78,12 @@ async def research_node(state: AgentState) -> dict[str, Any]:
         try:
             store = load_store(ticker)
         except FileNotFoundError:
+            log.info("[%s] no cached index — ingesting from EDGAR", ticker)
             chunks = await ingest_ticker(
                 ticker, form_types=["10-K", "10-Q"], max_filings=2
             )
             store = build_store(chunks, ticker)
+        log.info("[%s] running MMR retrieval", ticker)
         docs = retrieve(query, store)
     except (ValueError, OSError) as exc:
         return {
@@ -102,9 +109,11 @@ async def research_node(state: AgentState) -> dict[str, Any]:
         api_key=settings.anthropic_api_key,
     )
 
+    log.info("[%s] calling LLM to synthesise research (%d chunks)", ticker, len(docs))
     prompt = _RESEARCH_PROMPT.format(ticker=ticker, query=query, chunks=chunks_text)
     response = await llm.ainvoke([HumanMessage(content=prompt)])
     research_context = str(response.content)
+    log.info("[%s] research_node complete", ticker)
 
     return {
         "research_context": research_context,

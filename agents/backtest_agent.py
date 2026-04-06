@@ -1,5 +1,6 @@
 """Backtest agent — runs a vectorbt backtest on the latest AlphaSignal."""
 
+import logging
 from datetime import date, timedelta
 from typing import Any
 
@@ -11,6 +12,8 @@ from langchain_core.messages import HumanMessage
 from graph.state import AgentState
 from schemas.backtest_result import BacktestResult
 from schemas.signal import AlphaSignal
+
+log = logging.getLogger(__name__)
 
 # Backtest window: 2 years ending yesterday (no lookahead — signal is generated today)
 _BACKTEST_YEARS = 2
@@ -126,6 +129,10 @@ async def backtest_node(state: AgentState) -> dict[str, Any]:
     end_date = date.today() - timedelta(days=1)
     start_date = end_date - timedelta(days=_BACKTEST_YEARS * 365)
 
+    log.info(
+        "[%s] backtest_node — %s signal, fetching prices %s → %s",
+        ticker, direction, start_date, end_date,
+    )
     try:
         prices = _fetch_prices(ticker, start_date, end_date)
     except ValueError as exc:
@@ -153,6 +160,7 @@ async def backtest_node(state: AgentState) -> dict[str, Any]:
             "messages": [HumanMessage(content=summary)],
         }
 
+    log.info("[%s] running vectorbt backtest (%s)", ticker, direction)
     sharpe, max_dd, cagr, total_ret, num_trades = _run_backtest(prices, direction)
     bench_sharpe, bench_cagr = _benchmark_metrics(prices)
 

@@ -1,5 +1,6 @@
 """FAISS vector store — build from ingested chunks and expose MMR retrieval."""
 
+import logging
 import os
 from typing import Any
 
@@ -8,6 +9,8 @@ from langchain_core.documents import Document
 
 from config.settings import Settings
 from rag.embeddings import get_embedder
+
+log = logging.getLogger(__name__)
 
 
 def _index_path(ticker: str, settings: Settings) -> str:
@@ -46,6 +49,7 @@ def build_store(chunks: list[dict[str, Any]], ticker: str) -> FAISS:
     settings = Settings()
     embedder = get_embedder()
 
+    log.info("[%s] embedding %d chunks into FAISS store", ticker, len(chunks))
     documents = [
         Document(page_content=chunk["content"], metadata=chunk["metadata"])
         for chunk in chunks
@@ -56,6 +60,7 @@ def build_store(chunks: list[dict[str, Any]], ticker: str) -> FAISS:
     index_dir = _index_path(ticker, settings)
     os.makedirs(index_dir, exist_ok=True)
     store.save_local(index_dir)
+    log.info("[%s] FAISS index saved to %s", ticker, index_dir)
 
     return store
 
@@ -81,6 +86,7 @@ def load_store(ticker: str) -> FAISS:
             "Run ingest_ticker() first."
         )
 
+    log.info("[%s] loading existing FAISS index from %s", ticker, index_dir)
     embedder = get_embedder()
     return FAISS.load_local(index_dir, embedder, allow_dangerous_deserialization=True)
 
