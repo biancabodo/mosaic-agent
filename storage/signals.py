@@ -11,6 +11,7 @@ from schemas.signal import AlphaSignal
 log = logging.getLogger(__name__)
 
 _DEFAULT_DB = Path(".mosaic.db")
+_initialized: set[Path] = set()
 
 _CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS signals (
@@ -37,8 +38,10 @@ CREATE TABLE IF NOT EXISTS signals (
 def _connect(db_path: Path = _DEFAULT_DB) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
-    conn.execute(_CREATE_TABLE)
-    conn.commit()
+    if db_path not in _initialized:
+        conn.execute(_CREATE_TABLE)
+        conn.commit()
+        _initialized.add(db_path)
     return conn
 
 
@@ -51,6 +54,23 @@ def save(
 
     Returns the row id of the inserted record.
     """
+    bt = (
+        {
+            "sharpe_ratio": backtest.sharpe_ratio,
+            "max_drawdown": backtest.max_drawdown,
+            "cagr": backtest.cagr,
+            "total_return": backtest.total_return,
+            "benchmark_sharpe": backtest.benchmark_sharpe,
+            "benchmark_cagr": backtest.benchmark_cagr,
+            "backtest_start": backtest.start_date.isoformat(),
+            "backtest_end": backtest.end_date.isoformat(),
+        }
+        if backtest
+        else dict.fromkeys(
+            ["sharpe_ratio", "max_drawdown", "cagr", "total_return",
+             "benchmark_sharpe", "benchmark_cagr", "backtest_start", "backtest_end"]
+        )
+    )
     with _connect(db_path) as conn:
         cursor = conn.execute(
             """
@@ -74,14 +94,7 @@ def save(
                 "filing_period": signal.filing_period,
                 "generated_at": signal.generated_at.isoformat(),
                 "saved_at": datetime.now(UTC).isoformat(),
-                "sharpe_ratio": backtest.sharpe_ratio if backtest else None,
-                "max_drawdown": backtest.max_drawdown if backtest else None,
-                "cagr": backtest.cagr if backtest else None,
-                "total_return": backtest.total_return if backtest else None,
-                "benchmark_sharpe": backtest.benchmark_sharpe if backtest else None,
-                "benchmark_cagr": backtest.benchmark_cagr if backtest else None,
-                "backtest_start": backtest.start_date.isoformat() if backtest else None,
-                "backtest_end": backtest.end_date.isoformat() if backtest else None,
+                **bt,
             },
         )
         row_id: int = cursor.lastrowid or 0

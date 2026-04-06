@@ -11,6 +11,7 @@ printed as a scorecard. Pass/fail is determined per-example against the
 
 import argparse
 import sys
+from types import SimpleNamespace
 from typing import Any
 
 from evals.backtest_sanity import (
@@ -25,14 +26,6 @@ from evals.signal_quality import (
     evaluate_signal_structure,
     evaluate_supporting_evidence,
 )
-
-
-class _Run:
-    """Minimal stand-in for a LangSmith Run object."""
-
-    def __init__(self, outputs: dict[str, Any]) -> None:
-        self.outputs = outputs
-
 
 _SIGNAL_EVALUATORS: list[tuple[str, Any]] = [
     ("citation_presence", evaluate_citation_presence),
@@ -64,7 +57,7 @@ def _run_signal_evals(include_llm: bool) -> None:
         scores: list[float] = []
 
         for example in GOLDEN_DATASET:
-            run = _Run(outputs=example["outputs"])
+            run = SimpleNamespace(outputs=example["outputs"])
             result = evaluator(run, example)
 
             if result.score is None:
@@ -92,7 +85,7 @@ def _run_backtest_evals() -> None:
     for name, evaluator in _BACKTEST_EVALUATORS:
         n_applicable = 0
         for example in GOLDEN_DATASET:
-            run = _Run(outputs=example["outputs"])
+            run = SimpleNamespace(outputs=example["outputs"])
             result = evaluator(run, example)
             if result.score is not None:
                 n_applicable += 1
