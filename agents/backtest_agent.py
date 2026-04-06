@@ -131,7 +131,10 @@ async def backtest_node(state: AgentState) -> dict[str, Any]:
 
     log.info(
         "[%s] backtest_node — %s signal, fetching prices %s → %s",
-        ticker, direction, start_date, end_date,
+        ticker,
+        direction,
+        start_date,
+        end_date,
     )
     try:
         prices = _fetch_prices(ticker, start_date, end_date)

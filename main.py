@@ -12,7 +12,13 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 # Silence noisy third-party loggers
-for _noisy in ("httpx", "httpcore", "huggingface_hub", "sentence_transformers", "faiss"):
+for _noisy in (
+    "httpx",
+    "httpcore",
+    "huggingface_hub",
+    "sentence_transformers",
+    "faiss",
+):  # noqa: E501
     logging.getLogger(_noisy).setLevel(logging.WARNING)
 
 
