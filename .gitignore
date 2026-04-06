@@ -17,6 +17,12 @@ wheels/
 .ruff_cache/
 .pytest_cache/
 
+# Local signal database
+.mosaic.db
+
+# FAISS index cache
+.faiss_cache/
+
 # macOS
 .DS_Store
 
