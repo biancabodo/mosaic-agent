@@ -1,7 +1,7 @@
 # Prevent the host shell's VIRTUAL_ENV from leaking into uv subprocesses
 unexport VIRTUAL_ENV
 
-.PHONY: build preflight lint format typecheck test clean
+.PHONY: build preflight lint format typecheck test evals clean
 
 build:
 	uv venv
@@ -23,5 +23,8 @@ typecheck:
 test:
 	uv run pytest -v
 
+evals:
+	uv run python -m evals.run_evals --no-llm
+
 clean:
-	rm -rf .venv .mypy_cache .ruff_cache __pycache__ .pytest_cache
+	rm -rf .venv .mypy_cache .ruff_cache __pycache__ .pytest_cache .mosaic.db
