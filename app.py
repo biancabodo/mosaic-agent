@@ -66,9 +66,7 @@ with gr.Blocks(title="AlphaSignal Research Agent") as demo:
 
     rationale_out = gr.Textbox(label="Rationale", interactive=False, lines=3)
     backtest_out = gr.Textbox(label="Backtest", interactive=False, lines=7)
-    research_out = gr.Textbox(
-        label="Research synthesis", interactive=False, lines=12
-    )
+    research_out = gr.Textbox(label="Research synthesis", interactive=False, lines=12)
 
     run_btn.click(
         fn=analyze,
