@@ -67,8 +67,16 @@ def save(
         }
         if backtest
         else dict.fromkeys(
-            ["sharpe_ratio", "max_drawdown", "cagr", "total_return",
-             "benchmark_sharpe", "benchmark_cagr", "backtest_start", "backtest_end"]
+            [
+                "sharpe_ratio",
+                "max_drawdown",
+                "cagr",
+                "total_return",
+                "benchmark_sharpe",
+                "benchmark_cagr",
+                "backtest_start",
+                "backtest_end",
+            ]
         )
     )
     with _connect(db_path) as conn:

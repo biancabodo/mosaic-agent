@@ -52,6 +52,14 @@ class Settings(BaseSettings):
             "Override via SEC_USER_AGENT env var."
         ),
     )
+    edgar_form_types: list[str] = Field(
+        default=["10-K", "10-Q", "8-K"],
+        description='Filing types to ingest. Set as JSON: \'["10-K","10-Q"]\'',
+    )
+    edgar_max_filings: int = Field(
+        default=3,
+        description="Max filings to fetch per run (across all form types)",
+    )
 
     # --- RAG chunking ---
     chunk_size: int = Field(default=1000, description="Chunk size for text splitter")
@@ -60,6 +68,12 @@ class Settings(BaseSettings):
     retrieval_fetch_k: int = Field(
         default=20,
         description="Candidate pool size for MMR diversity re-ranking",
+    )
+
+    # --- Re-ranker ---
+    reranker_model: str = Field(
+        default="cross-encoder/ms-marco-MiniLM-L-6-v2",
+        description="HuggingFace cross-encoder model for re-ranking hybrid results",
     )
 
     # --- FAISS persistence ---

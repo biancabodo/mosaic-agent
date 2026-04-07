@@ -1,6 +1,6 @@
 """AgentState TypedDict — shared state passed between all nodes in the LangGraph."""
 
-from typing import Annotated, Any
+from typing import Annotated, Any, NotRequired
 
 from langgraph.graph.message import add_messages
 from typing_extensions import TypedDict
@@ -41,3 +41,6 @@ class AgentState(TypedDict):
 
     error: str | None
     """Optional error message set by any node on failure; surfaced to the caller."""
+
+    stream_research: NotRequired[bool]
+    """Stream research LLM response to stdout. Disable for parallel multi-ticker."""

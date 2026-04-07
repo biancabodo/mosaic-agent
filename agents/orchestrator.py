@@ -9,7 +9,7 @@ from schemas.signal import AlphaSignal
 
 
 @traceable(name="alphasignal-run")
-async def run_pipeline(ticker: str) -> AgentState:
+async def run_pipeline(ticker: str, *, stream_research: bool = True) -> AgentState:
     """Run the full AlphaSignal research pipeline for a given ticker.
 
     Initialises a fresh AgentState, compiles the LangGraph, and invokes it
@@ -35,6 +35,7 @@ async def run_pipeline(ticker: str) -> AgentState:
         "backtest_result": None,
         "iteration_count": 0,
         "error": None,
+        "stream_research": stream_research,
     }
 
     final_state: AgentState = await graph.ainvoke(initial_state)  # type: ignore[assignment]

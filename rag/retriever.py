@@ -1,40 +1,72 @@
-"""FAISS vector store — build from ingested chunks and expose MMR retrieval."""
+"""FAISS vector store — build from ingested chunks and expose MMR/hybrid retrieval."""
 
+import json
 import logging
 import os
+from pathlib import Path
 from typing import Any
 
 from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
+from sentence_transformers import CrossEncoder
 
 from config.settings import Settings
 from rag.embeddings import get_embedder
 
 log = logging.getLogger(__name__)
 
+_DOCS_FILE = "docs.json"
+_reranker: CrossEncoder | None = None
+
+
+def _get_reranker() -> CrossEncoder:
+    global _reranker  # noqa: PLW0603
+    if _reranker is None:
+        settings = Settings()
+        log.info("loading cross-encoder re-ranker: %s", settings.reranker_model)
+        _reranker = CrossEncoder(settings.reranker_model)
+    return _reranker
+
+
+def _rerank(query: str, docs: list[Document], k: int) -> list[Document]:
+    """Score (query, doc) pairs with a cross-encoder and return top-k."""
+    if not docs:
+        return docs
+    reranker = _get_reranker()
+    pairs = [(query, doc.page_content) for doc in docs]
+    scores: list[float] = reranker.predict(pairs).tolist()
+    ranked = sorted(zip(scores, docs, strict=True), key=lambda x: x[0], reverse=True)
+    return [doc for _, doc in ranked[:k]]
+
 
 def _index_path(ticker: str, settings: Settings) -> str:
-    """Return the filesystem path for a ticker's persisted FAISS index.
-
-    Args:
-        ticker: Stock ticker symbol, e.g. 'NVDA'.
-        settings: Application settings (provides faiss_index_dir).
-
-    Returns:
-        Absolute directory path where the index is saved/loaded.
-    """
     return os.path.join(settings.faiss_index_dir, ticker.upper())
 
 
-def build_store(chunks: list[dict[str, Any]], ticker: str) -> FAISS:
-    """Embed chunks and build a FAISS vector store, persisting it to disk.
+def _docs_path(index_dir: str) -> Path:
+    return Path(index_dir) / _DOCS_FILE
 
-    If an index already exists for the ticker it is overwritten. This is
-    intentional — call load_store if you want to reuse an existing index.
+
+def _save_documents(documents: list[Document], index_dir: str) -> None:
+    data = [{"page_content": d.page_content, "metadata": d.metadata} for d in documents]
+    _docs_path(index_dir).write_text(json.dumps(data))
+
+
+def _load_documents(index_dir: str) -> list[Document] | None:
+    path = _docs_path(index_dir)
+    if not path.exists():
+        return None
+    raw: list[dict[str, Any]] = json.loads(path.read_text())
+    return [
+        Document(page_content=r["page_content"], metadata=r["metadata"]) for r in raw
+    ]
+
+
+def build_store(chunks: list[dict[str, Any]], ticker: str) -> FAISS:
+    """Embed chunks, build a FAISS store, and persist both index and documents to disk.
 
     Args:
-        chunks: List of chunk dicts from rag.ingest.chunk_filing, each with
-            'content' (str) and 'metadata' (dict) keys.
+        chunks: Chunk dicts from rag.ingest.chunk_filing with 'content' and 'metadata'.
         ticker: Used to namespace the persisted index directory.
 
     Returns:
@@ -60,6 +92,7 @@ def build_store(chunks: list[dict[str, Any]], ticker: str) -> FAISS:
     index_dir = _index_path(ticker, settings)
     os.makedirs(index_dir, exist_ok=True)
     store.save_local(index_dir)
+    _save_documents(documents, index_dir)
     log.info("[%s] FAISS index saved to %s", ticker, index_dir)
 
     return store
@@ -91,28 +124,6 @@ def load_store(ticker: str) -> FAISS:
     return FAISS.load_local(index_dir, embedder, allow_dangerous_deserialization=True)
 
 
-def get_or_build_store(chunks: list[dict[str, Any]], ticker: str) -> FAISS:
-    """Return an existing FAISS store for the ticker, or build one from chunks.
-
-    Prefers the persisted index to avoid re-embedding. Only builds a new
-    store if no index file exists.
-
-    Args:
-        chunks: Chunks to use if building a new store. Ignored if loading.
-        ticker: Target ticker symbol.
-
-    Returns:
-        FAISS store (loaded or freshly built).
-    """
-    settings = Settings()
-    index_dir = _index_path(ticker, settings)
-
-    if os.path.exists(index_dir):
-        return load_store(ticker)
-
-    return build_store(chunks, ticker)
-
-
 def retrieve(
     query: str,
     store: FAISS,
@@ -120,21 +131,16 @@ def retrieve(
     k: int | None = None,
     fetch_k: int | None = None,
 ) -> list[Document]:
-    """Run MMR retrieval against a FAISS store.
-
-    Maximal Marginal Relevance balances relevance to the query against
-    diversity of results — important for SEC filings where many chunks
-    may be near-duplicates.
+    """Run MMR retrieval against a FAISS store (semantic only).
 
     Args:
         query: Natural language query string.
         store: Populated FAISS store to search.
-        k: Number of documents to return. Defaults to settings.retrieval_k (6).
+        k: Number of documents to return. Defaults to settings.retrieval_k.
         fetch_k: Candidate pool size before MMR re-ranking.
-            Defaults to settings.retrieval_fetch_k (20).
 
     Returns:
-        List of LangChain Document objects, each with page_content and metadata.
+        List of LangChain Document objects.
     """
     settings = Settings()
     return store.max_marginal_relevance_search(
@@ -142,3 +148,88 @@ def retrieve(
         k=k if k is not None else settings.retrieval_k,
         fetch_k=fetch_k if fetch_k is not None else settings.retrieval_fetch_k,
     )
+
+
+def retrieve_hybrid(
+    query: str,
+    store: FAISS,
+    ticker: str,
+    *,
+    k: int | None = None,
+    fetch_k: int | None = None,
+    rerank: bool = True,
+) -> list[Document]:
+    """Hybrid BM25 + MMR retrieval with optional cross-encoder re-ranking.
+
+    Pipeline:
+      1. BM25 (sparse) — captures exact financial figures and Item citations.
+      2. MMR (dense) — adds topical diversity via semantic search.
+      3. RRF merge — consensus ranking across both lists.
+      4. Cross-encoder re-rank (optional) — precise (query, doc) relevance scoring.
+
+    Falls back to MMR-only if the document cache (docs.json) is absent — this
+    happens when loading a FAISS index built before this feature was added.
+
+    Args:
+        query: Natural language research question.
+        store: Populated FAISS store.
+        ticker: Ticker symbol used to locate the document cache.
+        k: Documents to return. Defaults to settings.retrieval_k (6).
+        fetch_k: MMR candidate pool. Defaults to settings.retrieval_fetch_k (20).
+        rerank: Apply cross-encoder re-ranking after RRF. Defaults to True.
+
+    Returns:
+        Deduplicated list of Documents, ranked by final score.
+    """
+    from langchain_community.retrievers import BM25Retriever
+
+    settings = Settings()
+    k_val = k if k is not None else settings.retrieval_k
+    fetch_k_val = fetch_k if fetch_k is not None else settings.retrieval_fetch_k
+
+    index_dir = _index_path(ticker, settings)
+    documents = _load_documents(index_dir)
+
+    if documents is None:
+        log.info("[%s] docs cache missing — falling back to MMR only", ticker)
+        candidates = store.max_marginal_relevance_search(
+            query, k=k_val, fetch_k=fetch_k_val
+        )
+        return _rerank(query, candidates, k_val) if rerank else candidates
+
+    log.info("[%s] hybrid retrieval (BM25 + MMR) over %d docs", ticker, len(documents))
+    bm25_results = BM25Retriever.from_documents(documents, k=k_val).invoke(query)
+    mmr_results = store.max_marginal_relevance_search(
+        query, k=k_val, fetch_k=fetch_k_val
+    )
+    candidates = _rrf_merge([bm25_results, mmr_results], k_val)
+
+    if rerank:
+        log.info("[%s] cross-encoder re-ranking %d candidates", ticker, len(candidates))
+        return _rerank(query, candidates, k_val)
+    return candidates
+
+
+_RRF_K = 60  # standard RRF constant — dampens the impact of rank position
+
+
+def _rrf_merge(ranked_lists: list[list[Document]], k_final: int) -> list[Document]:
+    """Reciprocal Rank Fusion over multiple ranked document lists.
+
+    Each document's score is the sum of 1/(RRF_K + rank) across all lists.
+    Documents appearing in multiple lists get a score boost; order reflects
+    overall consensus ranking.
+    """
+    scores: dict[str, float] = {}
+    docs_by_key: dict[str, Document] = {}
+
+    for ranked in ranked_lists:
+        for rank, doc in enumerate(ranked):
+            key = doc.page_content[:120]  # stable identity within a run
+            scores[key] = scores.get(key, 0.0) + 1.0 / (_RRF_K + rank + 1)
+            docs_by_key[key] = doc
+
+    return [
+        docs_by_key[key]
+        for key in sorted(scores, key=lambda x: scores[x], reverse=True)
+    ][:k_final]

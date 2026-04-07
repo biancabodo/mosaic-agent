@@ -23,9 +23,9 @@ for _noisy in (  # noqa: E501
     logging.getLogger(_noisy).setLevel(logging.WARNING)
 
 
-async def run_one(ticker: str) -> None:
+async def run_one(ticker: str, *, stream: bool) -> None:
     """Run the full pipeline for a single ticker and print results."""
-    state = await run_pipeline(ticker)
+    state = await run_pipeline(ticker, stream_research=stream)
 
     if state.get("error"):
         print(f"[{ticker.upper()}] error: {state['error']}", file=sys.stderr)
@@ -53,7 +53,8 @@ async def run_one(ticker: str) -> None:
 
 async def main(tickers: list[str]) -> None:
     print(f"Running AlphaSignal pipeline for: {', '.join(t.upper() for t in tickers)}")
-    await asyncio.gather(*[run_one(t) for t in tickers])
+    stream = len(tickers) == 1
+    await asyncio.gather(*[run_one(t, stream=stream) for t in tickers])
 
 
 if __name__ == "__main__":
